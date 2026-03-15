@@ -116,7 +116,7 @@ Downsampling was applied consistently to:
 
 # Project Folder Structure
 
-`
+```
 MMASD_project/
 │
 ├── ADOS_rating.csv
@@ -140,7 +140,7 @@ MMASD_project/
 │
 ├── test_loader.py
 ├── test_cnn.py
-`
+```
 
 Note: The dataset folders are not included in this repository due to their large size.
 
@@ -218,7 +218,7 @@ The loader reads and synchronizes:
 
 Each sample returns:
 
-`
+```
 {
     optical_flow : Tensor [T, 2, 224, 224]
     skeleton2d   : Tensor [T, 25, 3]
@@ -226,7 +226,7 @@ Each sample returns:
     meta         : Tensor [age, gender]
     label        : ASD diagnosis
 }
-`
+```
 
 ---
 
@@ -234,13 +234,13 @@ Each sample returns:
 
 Example batch output:
 
-`
+```
 Optical Flow shape: torch.Size([2, 30, 2, 224, 224])
 2D Skeleton shape: torch.Size([2, 30, 25, 3])
 3D Skeleton shape: torch.Size([2, 30, 24, 3])
 Meta shape: torch.Size([2, 2])
 Label shape: torch.Size([2])
-`
+```
 
 Meaning:
 
@@ -258,7 +258,7 @@ Meaning:
 File:
 
 `
-cnn_optical_flow.py
+cnn_opticalflow.py
 `
 
 A modified **ResNet-18 CNN** is used to extract motion features from optical flow images.
@@ -296,10 +296,10 @@ Two models are used:
 
 Input:
 
-`
+```
 2D Skeleton: (B, 30, 25, 3)
 3D Skeleton: (B, 30, 24, 3)
-`
+```
 
 Output:
 
@@ -315,11 +315,11 @@ The model learns temporal motion patterns from body posture changes.
 
 At this stage, three feature streams are generated:
 
-`
+```
 Optical Flow CNN  → (B, 30, 256)
 2D Skeleton BiLSTM → (B, 30, 256)
 3D Skeleton BiLSTM → (B, 30, 256)
-`
+```
 
 These features will later be fused for multimodal classification.
 
@@ -341,7 +341,7 @@ Next development steps include:
 
 Main dependencies:
 
-`
+```
 Python 3.9+
 PyTorch
 Torchvision
@@ -349,7 +349,7 @@ NumPy
 Pandas
 OpenCV
 Pillow
-`
+```
 
 Install using:
 
