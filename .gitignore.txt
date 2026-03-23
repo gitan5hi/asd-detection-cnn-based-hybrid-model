@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Python cache
 __pycache__/
 *.pyc
@@ -10,4 +11,18 @@ venv/
 .vscode/
 
 # environment variables
+=======
+# Python cache
+__pycache__/
+*.pyc
+
+# virtual environment
+.venv/
+venv/
+
+# VS Code settings
+.vscode/
+
+# environment variables
+>>>>>>> 78b0cbccef2cbdbab00c30f83dd5e7e4cd2c51a9
 .env
