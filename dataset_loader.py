@@ -8,16 +8,14 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 from PIL import Image
 
-
 image_transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor()
 ])
 
-
 class MMASDDataset(Dataset):
 
-    def __init__(self, sequence_length=30):
+    def __init__(self, sequence_length=10):
 
         self.sequence_length = sequence_length
 
@@ -27,9 +25,13 @@ class MMASDDataset(Dataset):
         self.clinical_csv = r"D:\MMASD_dataset\ADOS_rating.csv"
 
         # =====================
-        # Clinical Lookup
+        # LOAD CSV + FIX COLUMN
         # =====================
         df = pd.read_csv(self.clinical_csv)
+
+        df = df.rename(columns={
+            "ADOS Comparison Score (1-10) <5  not very autistic. ASD people usually fall 5-10. 8-10=Severe, 5-7=moderate, 1-4=mild": "score"
+        })
 
         df = df.drop_duplicates(subset="ID#", keep="first")
         df["ID#"] = df["ID#"].astype(str)
@@ -37,7 +39,7 @@ class MMASDDataset(Dataset):
         self.clinical_lookup = df.set_index("ID#").to_dict("index")
 
         # =====================
-        # Build Sample Index
+        # BUILD SAMPLES
         # =====================
         self.samples = []
 
@@ -55,8 +57,21 @@ class MMASDDataset(Dataset):
             for subject_folder in os.listdir(flow_pose):
 
                 subject_id = self.extract_subject_id(subject_folder)
+                row = self.clinical_lookup.get(subject_id, None)
 
-                if subject_id not in self.clinical_lookup:
+                if row is None:
+                    continue
+
+                score = row.get("score", None)
+
+                # Skip invalid
+                if pd.isna(score):
+                    continue
+
+                score = int(score)
+
+                # Keep only moderate + severe
+                if score < 5:
                     continue
 
                 flow_subject = os.path.join(flow_pose, subject_folder)
@@ -74,15 +89,24 @@ class MMASDDataset(Dataset):
         print(f"Loaded {len(self.samples)} valid samples")
 
     # =====================
-    # Extract numeric ID
+    # UTIL
     # =====================
     def extract_subject_id(self, folder_name):
-
         match = re.search(r"\d+", folder_name)
         return match.group(0) if match else None
 
+    def pad_sequence(self, data):
+        if len(data) == 0:
+            raise ValueError("Empty sequence encountered")
+
+        if len(data) < self.sequence_length:
+            pad = [data[-1]] * (self.sequence_length - len(data))
+            data.extend(pad)
+
+        return data[:self.sequence_length]
+
     # =====================
-    # Optical Flow
+    # OPTICAL FLOW
     # =====================
     def load_optical_flow(self, pose, subject):
 
@@ -104,13 +128,12 @@ class MMASDDataset(Dataset):
 
             frames.append(torch.cat([x, y], dim=0))
 
-        if len(frames) == 0:
-            raise ValueError("No optical flow frames")
+        frames = self.pad_sequence(frames)
 
         return torch.stack(frames)
 
     # =====================
-    # 2D Skeleton
+    # 2D SKELETON
     # =====================
     def load_openpose(self, pose, subject):
 
@@ -131,10 +154,13 @@ class MMASDDataset(Dataset):
 
             skeleton.append(kp)
 
+        skeleton = self.pad_sequence(skeleton)
+        skeleton = np.array(skeleton)
+
         return torch.tensor(skeleton, dtype=torch.float32)
 
     # =====================
-    # 3D Skeleton
+    # 3D SKELETON
     # =====================
     def load_romp3d(self, pose, subject):
 
@@ -145,75 +171,48 @@ class MMASDDataset(Dataset):
 
         for i in range(min(self.sequence_length, len(npz_files))):
 
-            file_path = os.path.join(subject_path, npz_files[i])
-            data = np.load(file_path)
-
+            data = np.load(os.path.join(subject_path, npz_files[i]))
             joints = data["coordinates"]
-
-            joints = np.array(joints)
 
             if joints.ndim == 3:
                 joints = joints[0]
-
             if joints.ndim == 4:
                 joints = joints[0][0]
 
             skeleton.append(joints)
 
-        if len(skeleton) < self.sequence_length:
-            pad = [skeleton[-1]] * (self.sequence_length - len(skeleton))
-            skeleton.extend(pad)
-
+        skeleton = self.pad_sequence(skeleton)
         skeleton = np.stack(skeleton)
 
         return torch.tensor(skeleton, dtype=torch.float32)
 
     # =====================
-    # Clinical
+    # LABEL (BINARY: MODERATE vs SEVERE)
     # =====================
-    def convert_age(self, age_str):
-
-        years = 0
-        months = 0
-
-        if "Y" in age_str:
-            years = int(age_str.split("Y")[0])
-
-        if "M" in age_str:
-            months = int(age_str.split(",")[1].replace("M", ""))
-
-        return years + months / 12
-
     def load_clinical(self, subject_id):
 
         row = self.clinical_lookup[subject_id]
+        score = int(row["score"])
 
-        label = int(row["ADOS-2 classification/Dx"])
-        gender = 1 if row["Gender"] == "M" else 0
-        age = self.convert_age(row["Chronological Age"])
+        if score <= 7:
+            label = 0   # Moderate
+        else:
+            label = 1   # Severe
 
-        meta = torch.tensor([age, gender], dtype=torch.float32)
-
-        return torch.tensor(label), meta
+        return torch.tensor(label, dtype=torch.long)
 
     # =====================
-    # Main Getter
+    # GET ITEM
     # =====================
     def __getitem__(self, idx):
 
         pose, subject_folder, subject_id = self.samples[idx]
 
-        optimal_flow = self.load_optical_flow(pose, subject_folder)
-        skeleton2d = self.load_openpose(pose, subject_folder)
-        skeleton3d = self.load_romp3d(pose, subject_folder)
-        label, meta = self.load_clinical(subject_id)
-
         return {
-            "optimal_flow": optimal_flow,
-            "skeleton2d": skeleton2d,
-            "skeleton3d": skeleton3d,
-            "meta": meta,
-            "label": label
+            "optimal_flow": self.load_optical_flow(pose, subject_folder),
+            "skeleton2d": self.load_openpose(pose, subject_folder),
+            "skeleton3d": self.load_romp3d(pose, subject_folder),
+            "label": self.load_clinical(subject_id)
         }
 
     def __len__(self):

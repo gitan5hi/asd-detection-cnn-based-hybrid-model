@@ -13,7 +13,6 @@ for batch in loader:
     print("Optimal Flow shape:", batch["optimal_flow"].shape)
     print("2D Skeleton shape:", batch["skeleton2d"].shape)
     print("3D Skeleton shape:", batch["skeleton3d"].shape)
-    print("Meta shape:", batch["meta"].shape)
     print("Label shape:", batch["label"].shape)
 
     break

@@ -9,7 +9,9 @@ class OptimalFlowCNN(nn.Module):
         super().__init__()
 
         # Use pretrained ResNet18
-        resnet = models.resnet18(pretrained=True)
+        from torchvision.models import resnet18, ResNet18_Weights
+
+        resnet = resnet18(weights=ResNet18_Weights.DEFAULT)
 
         # Modify first layer (Optimal flow has 2 channels instead of RGB 3)
         resnet.conv1 = nn.Conv2d(
